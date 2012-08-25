@@ -64,11 +64,28 @@ int init_port(int fd, options *opts) {
   return 0;
 }
 
+int init_stdin() {
+  struct termios ttystate;
+
+  //get the terminal state
+  tcgetattr(STDIN_FILENO, &ttystate);
+  //turn off canonical mode and echo
+  ttystate.c_lflag &= ~(ICANON | ECHO);
+  //minimum of number input read.
+  ttystate.c_cc[VMIN] = 1;
+
+  //set the terminal attributes.
+  return tcsetattr(STDIN_FILENO, TCSANOW, &ttystate);
+}
+
 int watch(int fdw, int fdr, options *opts) {
   fd_set rset, wset;
   int write_done = 0;
   int recv_cnt = 0;
   char io_format[10];
+  char line[16];
+  int pending = 0, line_ptr = 0;
+  int sending_data = 0;
 
   switch(opts->io_type) {
   case 0:
@@ -87,6 +104,7 @@ int watch(int fdw, int fdr, options *opts) {
     FD_ZERO(&rset);
     FD_ZERO(&wset);
     FD_SET(fdr, &rset);
+    FD_SET(STDIN_FILENO, &rset);
     FD_SET(fdw, &wset);
     maxfd = max(fdr, fdw);
 
@@ -128,22 +146,30 @@ int watch(int fdw, int fdr, options *opts) {
       }
     }
 
-    if (FD_ISSET(fdw, &wset) && write_done == 0) {
-      int val = 0;
-
-      // 標準入力を使用
-      // ここで IO 待ちが発生する可能性もある
-      ret = scanf(io_format, &val);
-      if (ret == EOF) {
-        write_done = 1;
-      } else {
-        if (opts->callback == DO_CALLBACK) {
-          printf("> ");
-          printf(io_format, val);
-          printf("\n");
+    if (! write_done) {
+      if (pending) {
+        if (FD_ISSET(fdw, &wset)) {
+          if (opts->callback == DO_CALLBACK) {
+            printf("> ");
+            printf(io_format, sending_data);
+            printf("\n");
+          }
+          write(fdw, &sending_data,
+                opts->io_type == 0 ? 1 : opts->io_type * sizeof(char));
+          pending = 0;
         }
-        write(fdw, &val,
-              opts->io_type == 0 ? 1 : opts->io_type * sizeof(char));
+      } else {
+        if (FD_ISSET(STDIN_FILENO, &rset)) {
+          ret = line[line_ptr++] = fgetc(stdin);
+          if (ret == EOF) {
+            write_done = 1;
+          } else if (ret == '\n') {
+            line[line_ptr] = '\0';
+            sscanf(line, io_format, &sending_data);
+            pending = 1;
+            line_ptr = 0;
+          }
+        }
       }
     }
   }
@@ -232,7 +258,9 @@ int main(int argc, char* argv[]){
     return 1;
   }
 
-  if (init_port(fdw, &opts) != 0 || init_port(fdr, &opts) != 0) {
+  if (init_port(fdw, &opts) != 0
+      || init_port(fdr, &opts) != 0
+      || init_stdin() != 0) {
     return 1;
   }
 
