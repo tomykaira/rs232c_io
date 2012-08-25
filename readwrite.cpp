@@ -149,13 +149,14 @@ int watch(int fdw, int fdr, options *opts) {
     if (! write_done) {
       if (pending) {
         if (FD_ISSET(fdw, &wset)) {
+          int send_size = opts->io_type == 0 ? 1 : opts->io_type * sizeof(char);
           if (opts->callback == DO_CALLBACK) {
             printf("> ");
             printf(io_format, sending_data);
+            printf("(%d)", send_size);
             printf("\n");
           }
-          write(fdw, &sending_data,
-                opts->io_type == 0 ? 1 : opts->io_type * sizeof(char));
+          write(fdw, &sending_data, send_size);
           pending = 0;
         }
       } else {
