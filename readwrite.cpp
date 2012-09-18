@@ -137,7 +137,7 @@ int watch(int fdw, int fdr, options *opts) {
             printf("%02x", buf[i]);
           }
           recv_cnt++;
-          if (opts->io_type == 0 || (recv_cnt % 4) == 0) {
+          if (opts->io_type != IO_ASCII && (recv_cnt % 4) == 0) {
             printf("\n");
           }
           fflush(stdout);
