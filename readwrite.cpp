@@ -207,6 +207,9 @@ int send_program(const char * program_file, int fdw) {
 
   int end_marker = 0xffffffff;
   write(fdw, &end_marker, 4);
+
+  cout << "Send file done" << endl;
+
   return 0;
 }
 

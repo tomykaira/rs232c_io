@@ -44,7 +44,7 @@ int Option::read_option(int argc, char* argv[]) {
       fprintf(stderr, "callback: yes\n");
       break;
     case 'd':
-      program_file = (char *)malloc(sizeof(optarg) + 1);
+      program_file = (char *)malloc(strlen(optarg) + 1);
       strcpy(program_file, optarg);
       break;
     default:
