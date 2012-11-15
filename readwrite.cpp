@@ -172,8 +172,6 @@ int watch(int fdw, int fdr, Option *opts) {
 }
 
 int send_program(const char * program_file, int fdw) {
-  char input[144000]; // 16000 * (8+1)
-  size_t read_size = 0;
   FILE *program_fp;
 
   if (!program_file) return 0;
@@ -185,28 +183,23 @@ int send_program(const char * program_file, int fdw) {
     return 1;
   }
 
-  read_size = fread(input, sizeof(char), 144000, program_fp);
-
-  if (read_size >= 144000) {
-    cerr << "Your program can be too big (exceeds 16000 lines)." << endl << "Check FPGA program ROM size." << endl;
-    return 1;
-  }
-
   cout << "Start to send file " << program_file << endl;
 
-  size_t wrote_size = 0;
-  while(wrote_size < read_size) {
-    int diff = write(fdw, input + wrote_size, read_size - wrote_size);
-    if (diff == -1) {
+  unsigned int inst;
+  while(fscanf(program_fp, "%x", &inst) != EOF) {
+    printf("%x\n", inst);
+    if (write(fdw, &inst, 4) != 4) {
       perror("write fdw");
       return 1;
-    } else {
-      wrote_size += diff;
     }
   }
 
   int end_marker = 0xffffffff;
-  write(fdw, &end_marker, 4);
+  printf("%x\n", end_marker);
+  if (write(fdw, &end_marker, 4) != 4) {
+    perror("write fdw");
+    return 1;
+  }
 
   cout << "Send file done" << endl;
 
