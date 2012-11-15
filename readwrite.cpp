@@ -171,14 +171,14 @@ int watch(int fdw, int fdr, Option *opts) {
   return 0;
 }
 
-int send_program(string program_file, int fdw) {
+int send_program(const char * program_file, int fdw) {
   char input[144000]; // 16000 * (8+1)
   size_t read_size = 0;
   FILE *program_fp;
 
-  if (program_file.empty()) return 0;
+  if (!program_file) return 0;
 
-  program_fp = fopen(program_file.c_str(), "r");
+  program_fp = fopen(program_file, "r");
   if (program_fp == NULL) {
     perror("fopen");
     cerr << "Error: failed to read " << program_file << " as the program file" << endl;

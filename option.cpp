@@ -3,8 +3,6 @@
 #define OPTSTRING "B:ah:cbd:"
 
 int Option::read_option(int argc, char* argv[]) {
-  char *file;
-
   while (1) {
     switch (getopt(argc, argv, OPTSTRING)) {
     case - 1:
@@ -46,9 +44,8 @@ int Option::read_option(int argc, char* argv[]) {
       fprintf(stderr, "callback: yes\n");
       break;
     case 'd':
-      file = (char *)malloc(sizeof(optarg) + 1);
-      strcpy(file, optarg);
-      program_file = string(file);
+      program_file = (char *)malloc(sizeof(optarg) + 1);
+      strcpy(program_file, optarg);
       break;
     default:
       fprintf(stderr, "Unknown option\n");

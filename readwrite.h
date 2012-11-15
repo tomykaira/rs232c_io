@@ -26,14 +26,20 @@ public:
   int io_type;
   bool callback;
   bool blocking;
-  string program_file;
+  char * program_file;
 
   Option() {
     baud_rate = B460800;
     io_type = IO_ASCII;
     callback = false;
     blocking = false;
-    program_file = string();
+    program_file = NULL;
+  }
+
+  ~Option() {
+    if (program_file == NULL) {
+      free(program_file);
+    }
   }
 
   int read_option(int argc, char* argv[]);
