@@ -22,7 +22,7 @@
 #define NO_CALLBACK 0
 #define DO_CALLBACK 1
 
-#define OPTSTRING "B:ah:c"
+#define OPTSTRING "B:ah:cb"
 
 extern char *optarg;
 extern int optind, opterr, optopt;
@@ -31,6 +31,7 @@ typedef struct _options {
   int baud_rate;
   int io_type;
   int callback;
+  bool blocking;
 } options;
 
 int init_port(int fd, options *opts) {
@@ -64,7 +65,7 @@ int init_port(int fd, options *opts) {
   return 0;
 }
 
-int init_stdin() {
+int init_async_stdin() {
   struct termios ttystate;
 
   //get the terminal state
@@ -104,7 +105,9 @@ int watch(int fdw, int fdr, options *opts) {
     FD_ZERO(&rset);
     FD_ZERO(&wset);
     FD_SET(fdr, &rset);
-    FD_SET(STDIN_FILENO, &rset);
+    if (opts->blocking) {
+      FD_SET(STDIN_FILENO, &rset);
+    }
     FD_SET(fdw, &wset);
     maxfd = max(fdr, fdw);
 
@@ -146,7 +149,7 @@ int watch(int fdw, int fdr, options *opts) {
       }
     }
 
-    if (! write_done) {
+    if (! opts->blocking && ! write_done) {
       if (pending) {
         if (FD_ISSET(fdw, &wset)) {
           int send_size = opts->io_type == 0 ? 1 : opts->io_type * sizeof(char);
@@ -177,6 +180,25 @@ int watch(int fdw, int fdr, options *opts) {
         }
       }
     }
+
+    if (opts->blocking && FD_ISSET(fdw, &wset) && write_done == 0) {
+      int val = 0;
+
+      // 標準入力を使用
+      // ここで IO 待ちが発生する可能性もある
+      ret = scanf(io_format, &val);
+      if (ret == EOF) {
+        write_done = 1;
+      } else {
+        if (opts->callback == DO_CALLBACK) {
+          printf("> ");
+          printf(io_format, val);
+          printf("\n");
+        }
+        write(fdw, &val,
+              opts->io_type == 0 ? 1 : opts->io_type * sizeof(char));
+      }
+    }
   }
   printf("\n");
   return 0;
@@ -185,6 +207,7 @@ int watch(int fdw, int fdr, options *opts) {
 int parse_options(int argc, char* argv[], options *opt) {
   int ret;
   opt->callback = NO_CALLBACK;
+  opt->blocking = false;
   while (1) {
     switch ((ret = getopt(argc, argv, OPTSTRING))) {
     case - 1:
@@ -193,6 +216,9 @@ int parse_options(int argc, char* argv[], options *opt) {
       return -1;
     case '?':
       return -1;
+    case 'b':
+      opt->blocking = true;
+      break;
     case 'B':
       fprintf(stderr, "baud_rate: %d\n", atoi(optarg));
       switch (atoi(optarg)) {
@@ -264,9 +290,14 @@ int main(int argc, char* argv[]){
   }
 
   if (init_port(fdw, &opts) != 0
-      || init_port(fdr, &opts) != 0
-      || init_stdin() != 0) {
+      || init_port(fdr, &opts) != 0) {
     return 1;
+  }
+
+  if (! opts.blocking) {
+    if (init_async_stdin() != 0) {
+      return 1;
+    }
   }
 
   return watch(fdw, fdr, &opts);
