@@ -1,46 +1,13 @@
 // TODO: ボーレートを設定可能にする
 //       入出力形式をえらべるようにする(ASCII, Hex...)
 //       window を設定可能にする
+#include "readwrite.h"
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/signal.h>
-#include <sys/select.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-#include <unistd.h>
-#include <errno.h>
-#include <fcntl.h>
-#include <termios.h>
 
 #define max(x, y) ((x < y) ? y : x)
 
-#define IO_ASCII 0
-
-#define NO_CALLBACK 0
-#define DO_CALLBACK 1
-
-#define OPTSTRING "B:ah:cb"
-
-extern char *optarg;
-extern int optind, opterr, optopt;
-
-typedef struct _options {
-  int baud_rate;
-  int io_type;
-  int callback;
-  bool blocking;
-} options;
-
-int init_port(int fd, options *opts) {
+int init_port(int fd, int baud_rate) {
   struct termios oldOptions, newOptions;
-  int baud_rate = B460800;
-
-  if (opts->baud_rate) {
-    baud_rate = opts->baud_rate;
-  }
 
   if (tcgetattr(fd, &oldOptions) < 0){
     close(fd);
@@ -79,7 +46,7 @@ int init_async_stdin() {
   return tcsetattr(STDIN_FILENO, TCSANOW, &ttystate);
 }
 
-int watch(int fdw, int fdr, options *opts) {
+int watch(int fdw, int fdr, Option *opts) {
   fd_set rset, wset;
   int write_done = 0;
   int recv_cnt = 0;
@@ -154,7 +121,7 @@ int watch(int fdw, int fdr, options *opts) {
         if (FD_ISSET(fdw, &wset)) {
           int send_size = opts->io_type == 0 ? 1 : opts->io_type * sizeof(char);
           char sendbuf[4];
-          if (opts->callback == DO_CALLBACK) {
+          if (opts->callback) {
             printf("> ");
             printf(io_format, sending_data);
             printf("(%d)", send_size);
@@ -190,7 +157,7 @@ int watch(int fdw, int fdr, options *opts) {
       if (ret == EOF) {
         write_done = 1;
       } else {
-        if (opts->callback == DO_CALLBACK) {
+        if (opts->callback) {
           printf("> ");
           printf(io_format, val);
           printf("\n");
@@ -204,65 +171,51 @@ int watch(int fdw, int fdr, options *opts) {
   return 0;
 }
 
-int parse_options(int argc, char* argv[], options *opt) {
-  int ret;
-  opt->callback = NO_CALLBACK;
-  opt->blocking = false;
-  while (1) {
-    switch ((ret = getopt(argc, argv, OPTSTRING))) {
-    case - 1:
-      return 0;
-    case ':':
-      return -1;
-    case '?':
-      return -1;
-    case 'b':
-      opt->blocking = true;
-      break;
-    case 'B':
-      fprintf(stderr, "baud_rate: %d\n", atoi(optarg));
-      switch (atoi(optarg)) {
-      case 9600:
-        opt->baud_rate = B9600;
-        break;
-      case 230400:
-        opt->baud_rate = B230400;
-        break;
-      case 460800:
-        opt->baud_rate = B460800;
-        break;
-      case 921600:
-        opt->baud_rate = B921600;
-        break;
-      }
-      break;
-    case 'a':
-      opt->io_type = IO_ASCII;
-      fprintf(stderr, "io: ascii\n");
-      break;
-    case 'h':
-      opt->io_type = atoi(optarg);
-      fprintf(stderr, "io: hex %d\n", opt->io_type);
-      break;
-    case 'c':
-      opt->callback = DO_CALLBACK;
-      fprintf(stderr, "callback: yes\n");
-      break;
-    default:
-      fprintf(stderr, "Unknown option\n");
-      return -1;
+int send_program(string program_file, int fdw) {
+  char input[144000]; // 16000 * (8+1)
+  size_t read_size = 0;
+  FILE *program_fp;
+
+  if (program_file.empty()) return 0;
+
+  program_fp = fopen(program_file.c_str(), "r");
+  if (program_fp == NULL) {
+    perror("fopen");
+    cerr << "Error: failed to read " << program_file << " as the program file" << endl;
+    return 1;
+  }
+
+  read_size = fread(input, sizeof(char), 144000, program_fp);
+
+  if (read_size >= 144000) {
+    cerr << "Your program can be too big (exceeds 16000 lines)." << endl << "Check FPGA program ROM size." << endl;
+    return 1;
+  }
+
+  cout << "Start to send file " << program_file << endl;
+
+  size_t wrote_size = 0;
+  while(wrote_size < read_size) {
+    int diff = write(fdw, input + wrote_size, read_size - wrote_size);
+    if (diff == -1) {
+      perror("write fdw");
+      return 1;
+    } else {
+      wrote_size += diff;
     }
   }
+
+  int end_marker = 0xffffffff;
+  write(fdw, &end_marker, 4);
+  return 0;
 }
 
 // Bi-directional RS232C communication program
 int main(int argc, char* argv[]){
   int fdw = -1, fdr = -1;
 
-  options opts;
-  memset(&opts, 0, sizeof(options));
-
-  if (parse_options(argc, argv, &opts) != 0) {
+  Option opts = Option();
+  if (opts.read_option(argc, argv) != 0) {
     return 1;
   }
 
@@ -289,8 +242,12 @@ int main(int argc, char* argv[]){
     return 1;
   }
 
-  if (init_port(fdw, &opts) != 0
-      || init_port(fdr, &opts) != 0) {
+  if (init_port(fdw, opts.baud_rate) != 0
+      || init_port(fdr, opts.baud_rate) != 0) {
+    return 1;
+  }
+
+  if (send_program(opts.program_file, fdw)) {
     return 1;
   }
 
