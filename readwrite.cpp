@@ -56,6 +56,7 @@ int watch(int fdw, int fdr, Option *opts) {
   char line[16];
   int pending = 0, line_ptr = 0;
   int sending_data = 0;
+  int end_marker = 0;  // increment if the read byte is a part of marker
 
   switch(opts->io_type) {
   case 0:
@@ -66,7 +67,7 @@ int watch(int fdw, int fdr, Option *opts) {
     break;
   }
 
-  while (fdw && fdr) {
+  while (fdw && fdr && end_marker < 3) {
     int ret = 0;
     unsigned char buf[16];
     int maxfd = 0;
@@ -103,6 +104,23 @@ int watch(int fdw, int fdr, Option *opts) {
         break;
       default:
         for (int i = 0; i < ret; i++) {
+          switch (buf[i]) {
+          case 231:
+            if (end_marker == 0) { end_marker ++; goto no_print; }
+            else end_marker = 0;
+            break;
+          case 181:
+            if (end_marker == 1) { end_marker ++; goto no_print; }
+            else end_marker = 0;
+            break;
+          case 130:
+            if (end_marker == 2) { end_marker ++; goto no_print; }
+            else end_marker = 0;
+            break;
+          default:
+            end_marker = 0;
+            break;
+          }
           if (opts->io_type == 0) {
             printf("%c", buf[i]);
           } else {
@@ -112,6 +130,7 @@ int watch(int fdw, int fdr, Option *opts) {
           if (opts->io_type != IO_ASCII && (recv_cnt % 4) == 0) {
             printf("\n");
           }
+        no_print:
           fflush(stdout);
         }
         break;
