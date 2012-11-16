@@ -48,6 +48,18 @@ int init_async_stdin() {
   return tcsetattr(STDIN_FILENO, TCSANOW, &ttystate);
 }
 
+int rollback_async_stdin() {
+  struct termios ttystate;
+
+  //get the terminal state
+  tcgetattr(STDIN_FILENO, &ttystate);
+  //turn off canonical mode and echo
+  ttystate.c_lflag |= ICANON | ECHO;
+
+  //set the terminal attributes.
+  return tcsetattr(STDIN_FILENO, TCSANOW, &ttystate);
+}
+
 int watch(int fdw, int fdr, Option *opts) {
   fd_set rset, wset;
   int write_done = 0;
@@ -289,5 +301,7 @@ int main(int argc, char* argv[]){
     }
   }
 
-  return watch(fdw, fdr, &opts);
+  int result = watch(fdw, fdr, &opts);
+  rollback_async_stdin();
+  return result;
 }
