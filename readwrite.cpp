@@ -200,7 +200,6 @@ int watch(int fdw, int fdr, Option *opts) {
       }
     }
   }
-  printf("\n");
   return 0;
 }
 
