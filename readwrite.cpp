@@ -227,6 +227,8 @@ int main(int argc, char* argv[]){
     fdw = open(filename, O_WRONLY | O_NOCTTY);
     if (fdw < 0) {
       fprintf(stderr, "Failed to open %s\n", filename);
+    } else if (opts.no_read) {
+      break;
     } else {
       fdr = open(filename, O_RDONLY | O_NOCTTY);
       if (fdr > 0) {
@@ -237,17 +239,23 @@ int main(int argc, char* argv[]){
       }
     }
   }
-  if (fdw < 0 || fdr < 0){
+  if (fdw < 0 || (!opts.no_read && fdr < 0)){
     return 1;
   }
 
-  if (init_port(fdw, opts.baud_rate) != 0
-      || init_port(fdr, opts.baud_rate) != 0) {
+  if (init_port(fdw, opts.baud_rate) != 0) {
+  }
+
+  if (!opts.no_read && init_port(fdr, opts.baud_rate) != 0) {
     return 1;
   }
 
   if (send_program(opts.program_file, fdw)) {
     return 1;
+  }
+
+  if (opts.no_read) {
+    return 0;
   }
 
   if (! opts.blocking) {

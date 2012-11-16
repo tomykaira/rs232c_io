@@ -1,6 +1,6 @@
 #include "readwrite.h"
 
-#define OPTSTRING "B:ah:cbd:"
+#define OPTSTRING "B:ah:cbd:R"
 
 int Option::read_option(int argc, char* argv[]) {
   while (1) {
@@ -13,6 +13,9 @@ int Option::read_option(int argc, char* argv[]) {
       return -1;
     case 'b':
       blocking = true;
+      break;
+    case 'R':
+      no_read = true;
       break;
     case 'B':
       fprintf(stderr, "baud_rate: %d\n", atoi(optarg));

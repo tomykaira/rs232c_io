@@ -26,6 +26,7 @@ public:
   int io_type;
   bool callback;
   bool blocking;
+  bool no_read;
   char * program_file;
 
   Option() {
@@ -33,6 +34,7 @@ public:
     io_type = IO_ASCII;
     callback = false;
     blocking = false;
+    no_read = false;
     program_file = NULL;
   }
 
