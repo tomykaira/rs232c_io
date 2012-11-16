@@ -220,6 +220,10 @@ int send_program(const char * program_file, int fdw) {
 
   counter = 0;
   while(fscanf(program_fp, "%x", &inst) != EOF) {
+    if (inst == 0xffffffff) {
+      cerr << "Instruction 0xffffffff is not allowed, because it is instruction terminator.";
+      return 1;
+    }
     // program data is big-endian, only here.
     inst = toggle_endian(inst);
     if (write(fdw, &inst, 4) != 4) {
