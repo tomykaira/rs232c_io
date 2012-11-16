@@ -184,11 +184,10 @@ int send_program(const char * program_file, int fdw) {
     return 1;
   }
 
-  cout << "Start to send file " << program_file << endl;
+  cerr << "Start to send file " << program_file << endl;
 
   unsigned int inst;
   while(fscanf(program_fp, "%x", &inst) != EOF) {
-    printf("%x\n", inst);
     // program data is big-endian, only here.
     inst = toggle_endian(inst);
     if (write(fdw, &inst, 4) != 4) {
@@ -198,13 +197,12 @@ int send_program(const char * program_file, int fdw) {
   }
 
   int end_marker = 0xffffffff;
-  printf("%x\n", end_marker);
   if (write(fdw, &end_marker, 4) != 4) {
     perror("write fdw");
     return 1;
   }
 
-  cout << "Send file done" << endl;
+  cerr << "Send file done" << endl;
 
   return 0;
 }
