@@ -6,7 +6,7 @@
 
 #define max(x, y) ((x < y) ? y : x)
 #define toggle_endian(data) ((data << 24) | ((data << 8) & 0x00ff0000) | ((data >> 8) & 0x0000ff00) | ((data >> 24) & 0x000000ff))
-#define INST_ROM_SIZE 16000
+#define INST_ROM_SIZE 20000
 
 int init_port(int fd, int baud_rate) {
   struct termios oldOptions, newOptions;
@@ -206,7 +206,8 @@ int send_program(const char * program_file, int fdw) {
   }
 
   if (counter >= INST_ROM_SIZE) {
-    printf("Program size maybe too big, the limit is %d, but this file is %d.\nPlease consult the Core creator.", INST_ROM_SIZE, counter);
+    fprintf(stderr, "Program size maybe too big, the limit is %d, but this file is %d.\nPlease consult the Core creator.\n", INST_ROM_SIZE, counter);
+    return 1;
   }
 
   cerr << "Send file done" << endl;
