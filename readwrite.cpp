@@ -6,6 +6,7 @@
 
 #define max(x, y) ((x < y) ? y : x)
 #define toggle_endian(data) ((data << 24) | ((data << 8) & 0x00ff0000) | ((data >> 8) & 0x0000ff00) | ((data >> 24) & 0x000000ff))
+#define INST_ROM_SIZE 16000
 
 int init_port(int fd, int baud_rate) {
   struct termios oldOptions, newOptions;
@@ -174,6 +175,7 @@ int watch(int fdw, int fdr, Option *opts) {
 
 int send_program(const char * program_file, int fdw) {
   FILE *program_fp;
+  unsigned int inst, counter;
 
   if (!program_file) return 0;
 
@@ -186,7 +188,7 @@ int send_program(const char * program_file, int fdw) {
 
   cerr << "Start to send file " << program_file << endl;
 
-  unsigned int inst;
+  counter = 0;
   while(fscanf(program_fp, "%x", &inst) != EOF) {
     // program data is big-endian, only here.
     inst = toggle_endian(inst);
@@ -194,12 +196,17 @@ int send_program(const char * program_file, int fdw) {
       perror("write fdw");
       return 1;
     }
+    counter ++;
   }
 
   int end_marker = 0xffffffff;
   if (write(fdw, &end_marker, 4) != 4) {
     perror("write fdw");
     return 1;
+  }
+
+  if (counter >= INST_ROM_SIZE) {
+    printf("Program size maybe too big, the limit is %d, but this file is %d.\nPlease consult the Core creator.", INST_ROM_SIZE, counter);
   }
 
   cerr << "Send file done" << endl;
