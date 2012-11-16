@@ -5,6 +5,7 @@
 
 
 #define max(x, y) ((x < y) ? y : x)
+#define toggle_endian(data) ((data << 24) | ((data << 8) & 0x00ff0000) | ((data >> 8) & 0x0000ff00) | ((data >> 24) & 0x000000ff))
 
 int init_port(int fd, int baud_rate) {
   struct termios oldOptions, newOptions;
@@ -188,6 +189,8 @@ int send_program(const char * program_file, int fdw) {
   unsigned int inst;
   while(fscanf(program_fp, "%x", &inst) != EOF) {
     printf("%x\n", inst);
+    // program data is big-endian, only here.
+    inst = toggle_endian(inst);
     if (write(fdw, &inst, 4) != 4) {
       perror("write fdw");
       return 1;
