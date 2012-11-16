@@ -73,7 +73,7 @@ int watch(int fdw, int fdr, Option *opts) {
     FD_ZERO(&rset);
     FD_ZERO(&wset);
     FD_SET(fdr, &rset);
-    if (opts->blocking) {
+    if (! opts->blocking) {
       FD_SET(STDIN_FILENO, &rset);
     }
     FD_SET(fdw, &wset);

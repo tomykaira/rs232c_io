@@ -43,7 +43,7 @@ int Option::read_option(int argc, char* argv[]) {
       fprintf(stderr, "io: hex %d\n", io_type);
       break;
     case 'c':
-      callback = 0;
+      callback = true;
       fprintf(stderr, "callback: yes\n");
       break;
     case 'd':
