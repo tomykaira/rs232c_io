@@ -63,25 +63,10 @@ int rollback_async_stdin() {
 int watch(int fdw, int fdr, Option *opts) {
   fd_set rset, wset;
   int write_done = 0;
-  int recv_cnt = 0;
-  char io_format[10];
-  char line[16];
-  int pending = 0, line_ptr = 0;
+  bool pending = false;
   int sending_data = 0;
-  int end_marker = 0;  // increment if the read byte is a part of marker
 
-  switch(opts->io_type) {
-  case 0:
-    sprintf(io_format, "%%c");
-    break;
-  default:
-    sprintf(io_format, "%%0%dx", opts->io_type*2);
-    break;
-  }
-
-  while (fdw && fdr && end_marker < 3) {
-    int ret = 0;
-    unsigned char buf[16];
+  while (fdw && fdr) {
     int maxfd = 0;
 
     FD_ZERO(&rset);
@@ -93,9 +78,7 @@ int watch(int fdw, int fdr, Option *opts) {
     FD_SET(fdw, &wset);
     maxfd = max(fdr, fdw);
 
-    ret = select(maxfd + 1, &rset, &wset, NULL, NULL);
-
-    if (ret == - 1) {
+    if (select(maxfd + 1, &rset, &wset, NULL, NULL) == - 1) {
       if (errno == EINTR)
         continue;
       perror("select");
@@ -103,100 +86,54 @@ int watch(int fdw, int fdr, Option *opts) {
     }
 
     if (FD_ISSET(fdr, &rset)) {
-      // 読み込み長は 1 に固定したほうがいい??
-      switch ((ret = read(fdr, buf, 16))) {
-      case - 1:
-        if (errno == EINTR || errno == EAGAIN)
-          continue;
-        perror("read");
-        return - 1;
+      switch(read_byte_from_rs(fdr, write_done, opts)) {
       case 0:
-        if (write_done == 1)
-          return 0;
         break;
-      default:
-        for (int i = 0; i < ret; i++) {
-          switch (buf[i]) {
-          case 231:
-            if (end_marker == 0) { end_marker ++; goto no_print; }
-            else end_marker = 0;
-            break;
-          case 181:
-            if (end_marker == 1) { end_marker ++; goto no_print; }
-            else end_marker = 0;
-            break;
-          case 130:
-            if (end_marker == 2) { end_marker ++; goto no_print; }
-            else end_marker = 0;
-            break;
-          default:
-            end_marker = 0;
-            break;
-          }
-          if (opts->io_type == 0) {
-            printf("%c", buf[i]);
-          } else {
-            printf("%02x", buf[i]);
-          }
-          recv_cnt++;
-          if (opts->io_type != IO_ASCII && (recv_cnt % 4) == 0) {
-            printf("\n");
-          }
-        no_print:
-          fflush(stdout);
-        }
-        break;
+      case -1:
+        return -1;
+      case 1:
+        return 0;
       }
     }
 
-    if (! opts->blocking && ! write_done) {
-      if (pending) {
-        if (FD_ISSET(fdw, &wset)) {
-          int send_size = opts->io_type == 0 ? 1 : opts->io_type * sizeof(char);
-          char sendbuf[4];
-          if (opts->callback) {
-            printf("> ");
-            printf(io_format, sending_data);
-            printf("(%d)", send_size);
-            printf("\n");
-          }
-          for (int i = 0; i < send_size ; i ++) {
-            sendbuf[send_size - 1 - i] = (sending_data >> 8*i) & 0xff;
-          }
-          write(fdw, sendbuf, send_size);
-          pending = 0;
-        }
-      } else {
-        if (FD_ISSET(STDIN_FILENO, &rset)) {
-          ret = line[line_ptr++] = fgetc(stdin);
-          if (ret == EOF) {
+    if (! write_done) {
+      if (opts->blocking && FD_ISSET(fdw, &wset) && ! write_done) {
+        int val = 0;
+
+        // 標準入力を使用
+        // ここで IO 待ちが発生する可能性もある
+        if (opts->input_fp) {
+          if (fscanf(opts->input_fp, opts->io_format, &val) == EOF) {
             write_done = 1;
-          } else if (ret == '\n') {
-            line[line_ptr] = '\0';
-            sscanf(line, io_format, &sending_data);
-            pending = 1;
-            line_ptr = 0;
           }
+        } else {
+          write_done = read_from_stdin_blocking(&val, opts) || write_done;
+        }
+        if (!write_done) {
+          write_byte_to_rs(fdw, val, opts);
         }
       }
-    }
 
-    if (opts->blocking && FD_ISSET(fdw, &wset) && write_done == 0) {
-      int val = 0;
-
-      // 標準入力を使用
-      // ここで IO 待ちが発生する可能性もある
-      ret = scanf(io_format, &val);
-      if (ret == EOF) {
-        write_done = 1;
-      } else {
-        if (opts->callback) {
-          printf("> ");
-          printf(io_format, val);
-          printf("\n");
+      if (! opts->blocking) {
+        if (pending) {
+          if (FD_ISSET(fdw, &wset)) {
+            write_byte_to_rs(fdw, sending_data, opts);
+            pending = false;
+          }
+        } else if (FD_ISSET(STDIN_FILENO, &rset)) {
+          switch(read_from_stdin_nonblocking(&sending_data, opts)) {
+          case -1:
+            return 1;
+          case 0:
+            continue;
+          case 1:
+            pending = true;
+            break;
+          case 2:
+            write_done = 1;
+            break;
+          }
         }
-        write(fdw, &val,
-              opts->io_type == 0 ? 1 : opts->io_type * sizeof(char));
       }
     }
   }
@@ -297,6 +234,8 @@ int main(int argc, char* argv[]){
   if (opts.no_read) {
     return 0;
   }
+
+  opts.set_io_format();
 
   if (! opts.blocking) {
     if (init_async_stdin() != 0) {
